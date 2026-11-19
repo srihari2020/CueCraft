@@ -1,3 +1,4 @@
+import unsloth
 import torch
 from datasets import load_dataset
 from trl import SFTConfig, SFTTrainer
@@ -56,27 +57,28 @@ def format_prompts(examples):
 dataset = load_dataset("json", data_files="data/cuecraft_train.jsonl", split="train")
 dataset = dataset.map(format_prompts, batched=True)
 
-# 4. Train using modern TRL SFTConfig (tuned for 8 GB VRAM)
+# 4. Full v1 training run (3 epochs = ~390 steps)
 trainer = SFTTrainer(
     model=model,
     processing_class=tokenizer,
     train_dataset=dataset,
     args=SFTConfig(
-        output_dir="outputs/cuecraft-lora",
+        output_dir="outputs/cuecraft-v1-lora",
         dataset_text_field="text",
         max_length=MAX_SEQ_LENGTH,
         dataset_num_proc=2,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
-        warmup_steps=5,
-        max_steps=60,  # Switch to num_train_epochs=3 once you have 500+ examples
+        warmup_steps=15,
+        num_train_epochs=3,
         learning_rate=2e-4,
         fp16=not is_bfloat16_supported(),
         bf16=is_bfloat16_supported(),
-        logging_steps=5,
+        logging_steps=10,
+        save_strategy="epoch",
         optim="adamw_8bit",
         weight_decay=0.01,
-        lr_scheduler_type="linear",
+        lr_scheduler_type="cosine",
         seed=42,
     ),
 )
@@ -93,4 +95,4 @@ model.save_pretrained_gguf(
     quantization_method="q4_k_m",
 )
 
-print("Done! GGUF exported to CueCraft-GGUF/")
+print("Done! CueCraft v1 GGUF exported to CueCraft-GGUF_gguf/")
