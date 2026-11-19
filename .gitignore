@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+outputs/
+CueCraft-LoRA/
+CueCraft-GGUF/
+CueCraft-GGUF_gguf/
+*.gguf
+*.safetensors
+*.bin
+.env
