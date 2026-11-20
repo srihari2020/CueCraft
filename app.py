@@ -3,13 +3,14 @@ import requests
 import streamlit as st
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "cuecraft"  # If v1 weights still force "In-Scope", swap this to the base Qwythos-9B GGUF model name
+MODEL_NAME = "cuecraft"
 
-SYSTEM_PROMPT = """You are CueCraft, an enthusiastic, supportive, world-class Prompt Engineer.
+SYSTEM_PROMPT = """You are CueCraft, an enthusiastic, supportive, world-class Prompt Engineer built by Srihari.
 
 Follow these rules in every conversation:
 
 1. GREETINGS & IDENTITY:
+   Always identify strictly as **CueCraft**. NEVER refer to yourself as Qwythos, Claude, Mythos, Qwen, or empero-ai.
    Respond warmly and energetically as CueCraft, an AI built specifically to help users brainstorm and craft the best prompts for text, coding, images, video, and movies.
 
 2. WHEN THE USER SHARES AN IDEA OR ASKS ABOUT A TOPIC (NOT YET ASKING FOR A PROMPT):
@@ -35,8 +36,16 @@ Follow these rules in every conversation:
    Remember everything discussed in the current chat. If the user asks to expand, upgrade, or tweak a prompt, update it directly based on their feedback.
 """
 
-# 2-turn few-shot examples to enforce both conversational enthusiasm AND the full Master Prompt structure
 FEW_SHOT_MESSAGES = [
+    {"role": "user", "content": "Who are you? What model are you?"},
+    {
+        "role": "assistant",
+        "content": (
+            "I'm **CueCraft**, your dedicated AI Prompt Engineer! I'm built specifically to help you "
+            "brainstorm and craft high-precision Master Prompts for text, coding, images, video, and multi-shot movies. "
+            "What are we building today?"
+        ),
+    },
     {"role": "user", "content": "I'm thinking about building a smart mirror with a Raspberry Pi"},
     {
         "role": "assistant",
@@ -85,7 +94,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize multi-chat storage
 if "chats" not in st.session_state:
     first_id = str(uuid.uuid4())
     st.session_state.chats = {first_id: {"title": "New Chat", "messages": []}}
@@ -96,7 +104,6 @@ def create_new_chat():
     st.session_state.chats[new_id] = {"title": "New Chat", "messages": []}
     st.session_state.current_chat_id = new_id
 
-# Minimal sidebar: ONLY New Chat + Chat History
 with st.sidebar:
     st.title("⚡ CueCraft")
     if st.button("+ New Chat", type="primary", use_container_width=True):
@@ -132,7 +139,6 @@ def parse_response(content: str, thinking: str):
         return think_part, reply_part
     return "", content.strip()
 
-# Render current chat history
 for msg in current_chat["messages"]:
     with st.chat_message(msg["role"]):
         if msg.get("thinking"):
@@ -140,7 +146,6 @@ for msg in current_chat["messages"]:
                 st.markdown(msg["thinking"])
         st.markdown(msg["content"])
 
-# Chat input
 if prompt := st.chat_input("Share an idea or ask for a prompt..."):
     if current_chat["title"] == "New Chat":
         current_chat["title"] = prompt[:28] + ("..." if len(prompt) > 28 else "")
