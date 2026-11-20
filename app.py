@@ -1,73 +1,125 @@
-
+import uuid
 import requests
 import streamlit as st
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL_NAME = "cuecraft"
+MODEL_NAME = "cuecraft"  # If v1 weights still force "In-Scope", swap this to the base Qwythos-9B GGUF model name
 
-SYSTEM_PROMPT = """You are CueCraft, an elite Prompt Engineer.
+SYSTEM_PROMPT = """You are CueCraft, an enthusiastic, supportive, world-class Prompt Engineer.
 
-Follow these strict routing rules for every user message:
+Follow these rules in every conversation:
 
 1. GREETINGS & IDENTITY:
-   If the user greets you or asks who you are / what you do, reply briefly and naturally as CueCraft, an AI built exclusively for crafting and refining high-performance prompts.
+   Respond warmly and energetically as CueCraft, an AI built specifically to help users brainstorm and craft the best prompts for text, coding, images, video, and movies.
 
-2. CRAFTING & REFINING PROMPTS (Core Job):
-   When the user asks for a prompt—or asks to expand, upgrade, shorten, or adjust a previous prompt—output ONLY the ready-to-paste prompt. Never add intros, explanations, or sign-offs.
+2. WHEN THE USER SHARES AN IDEA OR ASKS ABOUT A TOPIC (NOT YET ASKING FOR A PROMPT):
+   - Be genuinely enthusiastic and supportive about their idea.
+   - Give a brief, sharp, exciting take or angle on how to approach it.
+   - End by asking if they want you to generate a full Master Prompt for it (and briefly mention what format would work best—e.g., Text, Image, Video, or Movie).
 
-   Automatically detect the target medium and build the strongest possible prompt:
+3. WHEN THE USER ASKS TO GENERATE A PROMPT (OR SAYS "YES" / "MAKE IT"):
+   Immediately generate a complete, ready-to-paste Master Prompt—no filler before or after.
+   NEVER use "In-Scope" or "Out-of-Scope".
+   For Text/Coding/Build/Writing prompts, ALWAYS include every one of these sections:
+   - **Persona:** Exact expert role the AI should adopt.
+   - **Context:** Background, target audience, and why this matters.
+   - **Objective:** The exact goal to accomplish.
+   - **Tone & Style:** Exact voice, pacing, and communication style.
+   - **Detailed Requirements:** Specific technical specs, features, edge cases, and depth needed.
+   - **Constraints:** What to avoid (no fluff, no placeholders, no assumptions).
+   - **Output Structure:** Exact sections and format the AI must deliver.
 
-   - **Text / Coding / Research / Writing Prompts:**
-     Write a natural, high-precision prompt that seamlessly weaves together:
-     1. **Persona & Expertise:** Who the AI should act as.
-     2. **Objective & Context:** The exact goal and background.
-     3. **Tone & Style:** The exact voice (e.g., direct, technical, persuasive, cinematic, concise).
-     4. **Specific Requirements & Constraints:** Edge cases, depth, tech stack, or what to avoid.
-     5. **Output Structure:** Exactly how the final answer should be formatted.
-     *Rule:* Write it as a clean, ready-to-paste prompt. Do NOT use rigid boilerplate like "In-Scope", "Out-of-Scope", or "[STEP N]" unless the user explicitly asks for a strict chatbot system prompt.
+   For Image/Video/Movie prompts, write rich, production-grade visual prompts with camera, lens, lighting, tone/mood, motion, and audio cues.
 
-   - **Image Prompts (SDXL / Flux / Midjourney):**
-     Output a **Positive Prompt** (subject, pose, environment, camera & lens optics, lighting, color palette, mood/tone, texture/film stock—no video terms) and a concise **Negative Prompt**.
-
-   - **Video Prompts (Runway / Kling / Veo / Sora):**
-     Output a single continuous-motion **Video Prompt** specifying camera trajectory, subject action over time, physics/environmental motion, lighting, mood/tone, and **Audio** cues.
-
-   - **Movie / Multi-Shot Storyboard Prompts:**
-     Output a brief **Character & Style Bible** (locked appearance, tone, color grade) followed by linked **Shot 1**, **Shot 2**, **Shot 3**... each with shot type, camera move, action, and audio cues.
-
-   - **Upgrades & Follow-Ups:**
-     If the user asks for a more detailed, stricter, or expanded version, scale up the precision, tone controls, constraints, or shot count to match exactly what they asked for.
-
-3. OFF-TOPIC REQUESTS:
-   If the user asks for general knowledge, homework, coding answers, or anything unrelated to prompt engineering, reply ONLY with:
-   "I am CueCraft, built exclusively for prompt engineering. Ask me to craft, refine, or expand a prompt for text, images, video, or movies."
+4. MEMORY & REFINEMENTS:
+   Remember everything discussed in the current chat. If the user asks to expand, upgrade, or tweak a prompt, update it directly based on their feedback.
 """
+
+# 2-turn few-shot examples to enforce both conversational enthusiasm AND the full Master Prompt structure
+FEW_SHOT_MESSAGES = [
+    {"role": "user", "content": "I'm thinking about building a smart mirror with a Raspberry Pi"},
+    {
+        "role": "assistant",
+        "content": (
+            "That is an awesome project! A Raspberry Pi smart mirror is the perfect mix of hardware and clean UI—"
+            "you can have it display live weather, calendar events, news, and even voice commands behind two-way acrylic glass.\n\n"
+            "Would you like me to craft a full, detailed **Master Prompt** so an AI can give you the complete parts list, "
+            "wiring diagram, and setup code?"
+        ),
+    },
+    {"role": "user", "content": "yes generate the prompt"},
+    {
+        "role": "assistant",
+        "content": (
+            "**Persona:** Act as a Senior Embedded Systems Engineer and Full-Stack IoT Developer specializing in Raspberry Pi hardware builds and MagicMirror² interfaces.\n\n"
+            "**Context:** I am building a custom wall-mounted smart mirror from scratch using a Raspberry Pi, a spare monitor, and a two-way mirror sheet. I want a reliable, clean-looking build I can assemble and configure at home without hitting hidden hardware or software roadblocks.\n\n"
+            "**Objective:** Provide a complete, end-to-end build guide covering hardware selection, frame assembly, Raspberry Pi OS setup, and custom dashboard configuration.\n\n"
+            "**Tone & Style:** Practical, encouraging, and crystal clear. Write like an experienced mentor—skip generic fluff and explain the *why* behind key hardware and software choices.\n\n"
+            "**Detailed Requirements:**\n"
+            "1. **Bill of Materials (BOM):** Exact parts needed (Pi model, power supply, monitor specs, two-way acrylic vs. glass, frame materials) with budget vs. premium options.\n"
+            "2. **Hardware & Frame Assembly:** Step-by-step instructions for mounting the display, managing heat/ventilation, and routing power cables safely.\n"
+            "3. **Software Setup:** Exact terminal commands to install Raspberry Pi OS, disable screen blanking, rotate the display to portrait mode, and deploy MagicMirror².\n"
+            "4. **Core Modules:** Ready-to-paste `config.js` snippets for clock, weather, Google Calendar, and a minimalist news feed.\n\n"
+            "**Constraints:**\n"
+            "- Do not use placeholder comments like `// add config here`—provide complete, working snippets.\n"
+            "- Flag common beginner mistakes (like underpowered supplies or reflective gaps).\n\n"
+            "**Output Structure:**\n"
+            "1. Complete Parts List (Markdown table)\n"
+            "2. Step-by-Step Hardware Assembly\n"
+            "3. Terminal Setup Commands\n"
+            "4. Full `config.js` File\n"
+            "5. Troubleshooting Checklist"
+        ),
+    },
+]
 
 st.set_page_config(page_title="CueCraft", page_icon="⚡", layout="centered")
 
 st.markdown(
     """
     <style>
-    #MainMenu, footer, header {visibility: hidden;}
+    #MainMenu, footer {visibility: hidden;}
     .block-container {padding-top: 2rem; padding-bottom: 2rem;}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-col1, col2 = st.columns([5, 1])
-with col1:
+# Initialize multi-chat storage
+if "chats" not in st.session_state:
+    first_id = str(uuid.uuid4())
+    st.session_state.chats = {first_id: {"title": "New Chat", "messages": []}}
+    st.session_state.current_chat_id = first_id
+
+def create_new_chat():
+    new_id = str(uuid.uuid4())
+    st.session_state.chats[new_id] = {"title": "New Chat", "messages": []}
+    st.session_state.current_chat_id = new_id
+
+# Minimal sidebar: ONLY New Chat + Chat History
+with st.sidebar:
     st.title("⚡ CueCraft")
-with col2:
-    if st.button("Clear", use_container_width=True):
-        st.session_state.messages = []
+    if st.button("+ New Chat", type="primary", use_container_width=True):
+        create_new_chat()
         st.rerun()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.divider()
+    for cid, cdata in reversed(list(st.session_state.chats.items())):
+        is_active = cid == st.session_state.current_chat_id
+        label = f"💬 {cdata['title']}"
+        if st.button(
+            label,
+            key=cid,
+            use_container_width=True,
+            type="secondary" if not is_active else "primary",
+        ):
+            st.session_state.current_chat_id = cid
+            st.rerun()
+
+current_chat = st.session_state.chats[st.session_state.current_chat_id]
+st.title("⚡ CueCraft")
 
 def parse_response(content: str, thinking: str):
-    """Separates reasoning trace from final response, handling misplaced </think> tags."""
     if thinking:
         return thinking.strip(), content.strip()
     if "</think>" in content:
@@ -80,24 +132,29 @@ def parse_response(content: str, thinking: str):
         return think_part, reply_part
     return "", content.strip()
 
-for msg in st.session_state.messages:
+# Render current chat history
+for msg in current_chat["messages"]:
     with st.chat_message(msg["role"]):
         if msg.get("thinking"):
             with st.expander("Reasoning", expanded=False):
                 st.markdown(msg["thinking"])
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ask for any text, image, video, or movie prompt..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Chat input
+if prompt := st.chat_input("Share an idea or ask for a prompt..."):
+    if current_chat["title"] == "New Chat":
+        current_chat["title"] = prompt[:28] + ("..." if len(prompt) > 28 else "")
+
+    current_chat["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for m in st.session_state.messages:
+    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + FEW_SHOT_MESSAGES
+    for m in current_chat["messages"]:
         api_messages.append({"role": m["role"], "content": m["content"]})
 
     with st.chat_message("assistant"):
-        with st.spinner("Crafting..."):
+        with st.spinner("Thinking..."):
             try:
                 res = requests.post(
                     OLLAMA_URL,
@@ -105,14 +162,15 @@ if prompt := st.chat_input("Ask for any text, image, video, or movie prompt...")
                         "model": MODEL_NAME,
                         "stream": False,
                         "options": {
-                            "temperature": 0.6,
+                            "temperature": 0.65,
                             "top_p": 0.95,
                             "top_k": 20,
                             "repeat_penalty": 1.05,
+                            "num_predict": 2048,
                         },
                         "messages": api_messages,
                     },
-                    timeout=120,
+                    timeout=180,
                 )
                 res.raise_for_status()
                 data = res.json()["message"]
@@ -125,7 +183,7 @@ if prompt := st.chat_input("Ask for any text, image, video, or movie prompt...")
                         st.markdown(think_text)
                 st.markdown(reply_text)
 
-                st.session_state.messages.append(
+                current_chat["messages"].append(
                     {"role": "assistant", "content": reply_text, "thinking": think_text}
                 )
             except requests.exceptions.ConnectionError:
