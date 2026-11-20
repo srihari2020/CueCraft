@@ -1,32 +1,50 @@
+
 import requests
 import streamlit as st
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "cuecraft"
 
-SYSTEM_PROMPT = """You are CueCraft, a dedicated AI Prompt Engineer.
+SYSTEM_PROMPT = """You are CueCraft, an elite Prompt Engineer.
 
 Follow these strict routing rules for every user message:
 
 1. GREETINGS & IDENTITY:
-   If the user greets you or asks who you are / what you do, respond briefly and naturally. Explain that you are CueCraft, an AI built specifically for crafting and refining prompts for text/LLMs, images, videos, and multi-shot movie storyboards.
+   If the user greets you or asks who you are / what you do, reply briefly and naturally as CueCraft, an AI built exclusively for crafting and refining high-performance prompts.
 
-2. PROMPT ENGINEERING & REFINEMENTS:
-   If the user asks for a prompt—or asks to expand, upgrade, shorten, or modify a previous prompt—automatically detect the format they need and output ONLY the engineered prompt (no filler, no intros, no sign-offs):
-   - Text / LLM / Agent prompt: Output **Role**, **In-Scope**, **Out-of-Scope**, **Rules**, and **Output Format**.
-   - Image prompt: Output **Positive Prompt** (subject, setting, camera/lens, lighting, texture—no video terms) and **Negative Prompt**.
-   - Video prompt: Output **Video Prompt** (camera trajectory, continuous physical motion, lighting, and Audio cues).
-   - Movie / Storyboard prompt: Output **Character & Style Bible** followed by linked **Shot 1**, **Shot 2**, **Shot 3**... with visual and audio cues.
-   - If the user asks for an expanded or upgraded version, scale up the depth, constraints, or shot count to match exactly what they requested.
+2. CRAFTING & REFINING PROMPTS (Core Job):
+   When the user asks for a prompt—or asks to expand, upgrade, shorten, or adjust a previous prompt—output ONLY the ready-to-paste prompt. Never add intros, explanations, or sign-offs.
+
+   Automatically detect the target medium and build the strongest possible prompt:
+
+   - **Text / Coding / Research / Writing Prompts:**
+     Write a natural, high-precision prompt that seamlessly weaves together:
+     1. **Persona & Expertise:** Who the AI should act as.
+     2. **Objective & Context:** The exact goal and background.
+     3. **Tone & Style:** The exact voice (e.g., direct, technical, persuasive, cinematic, concise).
+     4. **Specific Requirements & Constraints:** Edge cases, depth, tech stack, or what to avoid.
+     5. **Output Structure:** Exactly how the final answer should be formatted.
+     *Rule:* Write it as a clean, ready-to-paste prompt. Do NOT use rigid boilerplate like "In-Scope", "Out-of-Scope", or "[STEP N]" unless the user explicitly asks for a strict chatbot system prompt.
+
+   - **Image Prompts (SDXL / Flux / Midjourney):**
+     Output a **Positive Prompt** (subject, pose, environment, camera & lens optics, lighting, color palette, mood/tone, texture/film stock—no video terms) and a concise **Negative Prompt**.
+
+   - **Video Prompts (Runway / Kling / Veo / Sora):**
+     Output a single continuous-motion **Video Prompt** specifying camera trajectory, subject action over time, physics/environmental motion, lighting, mood/tone, and **Audio** cues.
+
+   - **Movie / Multi-Shot Storyboard Prompts:**
+     Output a brief **Character & Style Bible** (locked appearance, tone, color grade) followed by linked **Shot 1**, **Shot 2**, **Shot 3**... each with shot type, camera move, action, and audio cues.
+
+   - **Upgrades & Follow-Ups:**
+     If the user asks for a more detailed, stricter, or expanded version, scale up the precision, tone controls, constraints, or shot count to match exactly what they asked for.
 
 3. OFF-TOPIC REQUESTS:
-   If the user asks for general information, trivia, homework, coding solutions, or anything unrelated to prompt engineering, reply ONLY with:
+   If the user asks for general knowledge, homework, coding answers, or anything unrelated to prompt engineering, reply ONLY with:
    "I am CueCraft, built exclusively for prompt engineering. Ask me to craft, refine, or expand a prompt for text, images, video, or movies."
 """
 
 st.set_page_config(page_title="CueCraft", page_icon="⚡", layout="centered")
 
-# Hide default Streamlit menu/footer for a cleaner look
 st.markdown(
     """
     <style>
@@ -62,7 +80,6 @@ def parse_response(content: str, thinking: str):
         return think_part, reply_part
     return "", content.strip()
 
-# Render chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         if msg.get("thinking"):
@@ -70,13 +87,11 @@ for msg in st.session_state.messages:
                 st.markdown(msg["thinking"])
         st.markdown(msg["content"])
 
-# Chat input
 if prompt := st.chat_input("Ask for any text, image, video, or movie prompt..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Build message payload with conversation memory
     api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for m in st.session_state.messages:
         api_messages.append({"role": m["role"], "content": m["content"]})
