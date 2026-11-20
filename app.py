@@ -1,67 +1,88 @@
-import re
 import requests
 import streamlit as st
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "cuecraft"
 
-st.set_page_config(page_title="CueCraft Studio", page_icon="⚡", layout="wide")
+SYSTEM_PROMPT = """You are CueCraft, a dedicated AI Prompt Engineer.
 
-st.title("⚡ CueCraft — Multi-Modal Prompt Architect")
-st.caption("Local fine-tuned Qwythos-9B (Q4_K_M) for zero-drift [TEXT], [IMAGE], [VIDEO], and [MOVIE] prompts.")
+Follow these strict routing rules for every user message:
 
-# Sidebar controls
-with st.sidebar:
-    st.header("Generation Settings")
-    temperature = st.slider("Temperature", 0.1, 1.2, 0.6, 0.05)
-    top_p = st.slider("Top-P", 0.5, 1.0, 0.95, 0.05)
-    repeat_penalty = st.slider("Repeat Penalty", 1.0, 1.3, 1.05, 0.01)
-    st.divider()
-    st.markdown("**Model:** `cuecraft` (Ollama)")
-    st.markdown("**Modes:** `[TEXT]` `[IMAGE]` `[VIDEO]` `[MOVIE]`")
+1. GREETINGS & IDENTITY:
+   If the user greets you or asks who you are / what you do, respond briefly and naturally. Explain that you are CueCraft, an AI built specifically for crafting and refining prompts for text/LLMs, images, videos, and multi-shot movie storyboards.
 
-# Mode selection
-mode = st.segmented_control(
-    "Select Mode",
-    options=["TEXT", "IMAGE", "VIDEO", "MOVIE"],
-    default="TEXT",
+2. PROMPT ENGINEERING & REFINEMENTS:
+   If the user asks for a prompt—or asks to expand, upgrade, shorten, or modify a previous prompt—automatically detect the format they need and output ONLY the engineered prompt (no filler, no intros, no sign-offs):
+   - Text / LLM / Agent prompt: Output **Role**, **In-Scope**, **Out-of-Scope**, **Rules**, and **Output Format**.
+   - Image prompt: Output **Positive Prompt** (subject, setting, camera/lens, lighting, texture—no video terms) and **Negative Prompt**.
+   - Video prompt: Output **Video Prompt** (camera trajectory, continuous physical motion, lighting, and Audio cues).
+   - Movie / Storyboard prompt: Output **Character & Style Bible** followed by linked **Shot 1**, **Shot 2**, **Shot 3**... with visual and audio cues.
+   - If the user asks for an expanded or upgraded version, scale up the depth, constraints, or shot count to match exactly what they requested.
+
+3. OFF-TOPIC REQUESTS:
+   If the user asks for general information, trivia, homework, coding solutions, or anything unrelated to prompt engineering, reply ONLY with:
+   "I am CueCraft, built exclusively for prompt engineering. Ask me to craft, refine, or expand a prompt for text, images, video, or movies."
+"""
+
+st.set_page_config(page_title="CueCraft", page_icon="⚡", layout="centered")
+
+# Hide default Streamlit menu/footer for a cleaner look
+st.markdown(
+    """
+    <style>
+    #MainMenu, footer, header {visibility: hidden;}
+    .block-container {padding-top: 2rem; padding-bottom: 2rem;}
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-placeholders = {
-    "TEXT": "e.g., Build a prompt for a Python code reviewer that only flags security bugs and outputs minimal diffs.",
-    "IMAGE": "e.g., A brutalist concrete library overgrown with bioluminescent moss at twilight.",
-    "VIDEO": "e.g., A cybernetic owl swooping through a neon-lit rainstorm.",
-    "MOVIE": "e.g., A lone astronaut finds an old cassette player floating inside a derelict space station.",
-}
+col1, col2 = st.columns([5, 1])
+with col1:
+    st.title("⚡ CueCraft")
+with col2:
+    if st.button("Clear", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
-user_idea = st.text_area("Describe your idea", placeholder=placeholders[mode], height=110)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 def parse_response(content: str, thinking: str):
-    """Separates reasoning trace from final prompt, even if </think> is misplaced."""
+    """Separates reasoning trace from final response, handling misplaced </think> tags."""
     if thinking:
         return thinking.strip(), content.strip()
-
-    # Standard <think>...</think> or ... </think>
     if "</think>" in content:
-        think_part, prompt_part = content.split("</think>", 1)
+        think_part, reply_part = content.split("</think>", 1)
         think_part = think_part.replace("<think>", "").strip()
-        prompt_part = prompt_part.strip()
-
-        # Handle [VIDEO] quirk where **Video Prompt appeared before </think>
-        if not prompt_part and "**Video Prompt" in think_part:
+        reply_part = reply_part.strip()
+        if not reply_part and "**Video Prompt" in think_part:
             idx = think_part.index("**Video Prompt")
             return think_part[:idx].strip(), think_part[idx:].strip()
-
-        return think_part, prompt_part
-
+        return think_part, reply_part
     return "", content.strip()
 
-if st.button("Craft Prompt", type="primary", use_container_width=True):
-    if not user_idea.strip():
-        st.warning("Enter an idea first.")
-    else:
-        full_prompt = f"[{mode}] {user_idea.strip()}"
-        with st.spinner(f"Crafting [{mode}] prompt..."):
+# Render chat history
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        if msg.get("thinking"):
+            with st.expander("Reasoning", expanded=False):
+                st.markdown(msg["thinking"])
+        st.markdown(msg["content"])
+
+# Chat input
+if prompt := st.chat_input("Ask for any text, image, video, or movie prompt..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Build message payload with conversation memory
+    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in st.session_state.messages:
+        api_messages.append({"role": m["role"], "content": m["content"]})
+
+    with st.chat_message("assistant"):
+        with st.spinner("Crafting..."):
             try:
                 res = requests.post(
                     OLLAMA_URL,
@@ -69,31 +90,30 @@ if st.button("Craft Prompt", type="primary", use_container_width=True):
                         "model": MODEL_NAME,
                         "stream": False,
                         "options": {
-                            "temperature": temperature,
-                            "top_p": top_p,
-                            "repeat_penalty": repeat_penalty,
+                            "temperature": 0.6,
+                            "top_p": 0.95,
+                            "top_k": 20,
+                            "repeat_penalty": 1.05,
                         },
-                        "messages": [{"role": "user", "content": full_prompt}],
+                        "messages": api_messages,
                     },
                     timeout=120,
                 )
                 res.raise_for_status()
-                msg = res.json()["message"]
-                think_text, final_prompt = parse_response(
-                    msg.get("content", ""), msg.get("thinking", "")
+                data = res.json()["message"]
+                think_text, reply_text = parse_response(
+                    data.get("content", ""), data.get("thinking", "")
                 )
 
                 if think_text:
-                    with st.expander("🧠 Reasoning Trace", expanded=False):
+                    with st.expander("Reasoning", expanded=False):
                         st.markdown(think_text)
+                st.markdown(reply_text)
 
-                st.subheader(f"Engineered [{mode}] Prompt")
-                st.markdown(final_prompt)
-
-                with st.expander("📋 Copy Raw Markdown", expanded=True):
-                    st.code(final_prompt, language="markdown")
-
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": reply_text, "thinking": think_text}
+                )
             except requests.exceptions.ConnectionError:
-                st.error("Cannot reach Ollama at http://localhost:11434. Make sure Ollama is running.")
+                st.error("Cannot reach Ollama at http://localhost:11434.")
             except Exception as e:
                 st.error(f"Error: {e}")
